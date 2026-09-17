@@ -1,6 +1,62 @@
 <!DOCTYPE html>
 <html lang="en-us">
-  <head>
+  <script>
+  const GIST_ID = "YOUR_GIST_ID";
+  const GH_TOKEN = "YOUR_GH_TOKEN";
+
+  let profile = localStorage.getItem("dr_profile");
+  if (!profile) {
+    profile = prompt("Enter profile name:") || "Player1";
+    localStorage.setItem("dr_profile", profile);
+  }
+
+  async function loadGistSave() {
+    try {
+      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+      const data = await res.json();
+      const allSaves = JSON.parse(data.files["deltarune_save.json"].content || "{}");
+      const userSave = allSaves[profile] || {};
+
+      Object.keys(userSave).forEach(key => localStorage.setItem(key, userSave[key]));
+      console.log(`Save data loaded for profile: ${profile}`);
+    } catch(e) {
+      console.warn("Failed to pull save state from Gist:", e);
+    }
+  }
+
+  const originalSetItem = localStorage.setItem;
+  localStorage.setItem = function(key, value) {
+    originalSetItem.apply(this, arguments);
+    if (key === "dr_profile") return;
+
+    const mySave = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k !== "dr_profile") mySave[k] = localStorage.getItem(k);
+    }
+
+    fetch(`https://api.github.com/gists/${GIST_ID}`)
+      .then(r => r.json())
+      .then(data => {
+        const allSaves = JSON.parse(data.files["deltarune_save.json"].content || "{}");
+        allSaves[profile] = mySave;
+
+        fetch(`https://api.github.com/gists/${GIST_ID}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `token ${GH_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            files: { "deltarune_save.json": { content: JSON.stringify(allSaves) } }
+          })
+        });
+      });
+  };
+
+  loadGistSave();
+</script>
+<head>
     <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/chapter2/">
     <script>
       // better debugging for me
