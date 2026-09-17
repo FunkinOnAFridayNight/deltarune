@@ -1,61 +1,53 @@
 <!DOCTYPE html>
 <html lang="en-us">
- <script>
-  const GIST_ID = "11c68eb82426d7465f03ede5de78725d";
-  // Split token string prevents GitHub's push protection from blocking the commit
-  const GH_TOKEN = "ghp_" + "ecWEE820XO6yx8CpvzS5UKsgXhXciq3Hdqhu";
+ <!-- Save Import/Export UI -->
+<div style="position: fixed; top: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 8px; border: 2px solid #fff; font-family: sans-serif;">
+  <button onclick="exportSave()" style="cursor: pointer; padding: 4px 8px;">Export Save</button>
+  <button onclick="document.getElementById('importInput').click()" style="cursor: pointer; padding: 4px 8px;">Import Save</button>
+  <input type="file" id="importInput" accept=".json" style="display: none;" onchange="importSave(event)">
+</div>
 
-  let profile = localStorage.getItem("dr_profile");
-  if (!profile) {
-    profile = prompt("Enter profile name:") || "Player1";
-    localStorage.setItem("dr_profile", profile);
-  }
-
-  async function loadGistSave() {
-    try {
-      const res = await fetch(`https://api.github.com/gists/${GIST_ID}`);
-      const data = await res.json();
-      const allSaves = JSON.parse(data.files["deltarune_save.json"].content || "{}");
-      const userSave = allSaves[profile] || {};
-
-      Object.keys(userSave).forEach(key => localStorage.setItem(key, userSave[key]));
-      console.log(`Save data loaded for profile: ${profile}`);
-    } catch(e) {
-      console.warn("Failed to pull save state from Gist:", e);
-    }
-  }
-
-  const originalSetItem = localStorage.setItem;
-  localStorage.setItem = function(key, value) {
-    originalSetItem.apply(this, arguments);
-    if (key === "dr_profile") return;
-
-    const mySave = {};
+<script>
+  function exportSave() {
+    const saveData = {};
     for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k !== "dr_profile") mySave[k] = localStorage.getItem(k);
+      const key = localStorage.key(i);
+      saveData[key] = localStorage.getItem(key);
+    }
+    
+    if (Object.keys(saveData).length === 0) {
+      alert("No save data found in browser storage!");
+      return;
     }
 
-    fetch(`https://api.github.com/gists/${GIST_ID}`)
-      .then(r => r.json())
-      .then(data => {
-        const allSaves = JSON.parse(data.files["deltarune_save.json"].content || "{}");
-        allSaves[profile] = mySave;
+    const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "deltarune_save.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-        fetch(`https://api.github.com/gists/${GIST_ID}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `token ${GH_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            files: { "deltarune_save.json": { content: JSON.stringify(allSaves) } }
-          })
+  function importSave(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const saveData = JSON.parse(e.target.result);
+        Object.keys(saveData).forEach(key => {
+          localStorage.setItem(key, saveData[key]);
         });
-      });
-  };
-
-  loadGistSave();
+        alert("Save file loaded successfully! Reloading page...");
+        location.reload();
+      } catch (err) {
+        alert("Failed to parse save file. Make sure it's a valid JSON export.");
+      }
+    };
+    reader.readAsText(file);
+  }
 </script>
 <head>
     <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/chapter4/">
