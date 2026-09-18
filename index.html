@@ -157,4 +157,45 @@
     });
   </script>
 </body>
+<!-- Deltarune Save Controls -->
+<div style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-family: sans-serif;">
+  <button onclick="exportDeltaruneSave('filech1_0')">Export Ch1 Slot 1</button>
+  <input type="file" id="imp1" style="display:none" onchange="importDeltaruneSave(this, 'filech1_0')">
+  <button onclick="document.getElementById('imp1').click()">Import Ch1 Slot 1</button>
+</div>
+
+<script>
+function exportDeltaruneSave(filename) {
+  try {
+    const fileData = FS.readFile('/' + filename, { encoding: 'utf8' });
+    const blob = new Blob([fileData], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (err) {
+    alert("Save file not found. Make sure to save in-game first!");
+  }
+}
+
+function importDeltaruneSave(fileInput, targetFilename) {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      FS.writeFile('/' + targetFilename, e.target.result);
+      FS.syncfs(false, function (err) {
+        if (err) alert("Sync failed.");
+        else alert(`Imported ${targetFilename}! Refresh the page.`);
+      });
+    } catch (err) {
+      alert("Error writing save file.");
+    }
+  };
+  reader.readAsText(file);
+}
+</script>
 </html>
