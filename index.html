@@ -4,7 +4,7 @@
   <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/">
   <meta charset="UTF-8">
   <link rel="stylesheet" href="style.css">
-  <!-- Local JSZip Library for Chromebook Compatibility -->
+  <!-- Local JSZip Library -->
   <script src="jszip.min.js"></script>
 </head>
 <body>
@@ -61,8 +61,8 @@
   </audio>
   <button id="mute">🔊</button>
 
-  <!-- Deltarune Zip Save Manager UI -->
-  <div style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white;">
+  <!-- Persistent Deltarune Zip Save Manager UI -->
+  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white;">
     <button onclick="exportAllSaves()" style="margin-bottom: 5px; width: 100%; padding: 6px; cursor: pointer; border-radius: 4px;">📦 Export Zip Save</button>
     <br>
     <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
@@ -90,9 +90,17 @@
     updateButton();
 
     function loadChapter(chapter) {
+      const saveUI = document.getElementById('save-manager-ui');
+      
       fetch(`chapter${chapter}/index.html`).then(res => res.text()).then(html => {
         gamestarted = true;
         document.documentElement.innerHTML = html;
+        
+        // Re-attach Save Manager UI inside the loaded chapter
+        if (saveUI) {
+          document.body.appendChild(saveUI);
+        }
+
         document.documentElement.querySelectorAll('script').forEach(oldScript => {
           const newScript = document.createElement('script');
           if (oldScript.src) {
@@ -238,7 +246,7 @@
           const zipEntry = zip.files[relativePath];
           if (zipEntry.dir) continue;
 
-          // Extracts clean filename even if inside folders like "DELTARUNE/filech1_0"
+          // Extracts clean filename even if inside subfolders
           const fileName = relativePath.split('/').pop();
 
           if (DELTARUNE_FILES.includes(fileName) || fileName.startsWith('filech') || fileName.startsWith('dr.')) {
