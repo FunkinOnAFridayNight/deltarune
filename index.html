@@ -4,8 +4,6 @@
   <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/">
   <meta charset="UTF-8">
   <link rel="stylesheet" href="style.css">
-  <!-- Local JSZip Library for Chromebook Compatibility -->
-  <script src="jszip.min.js"></script>
 </head>
 <body>
   <div class="logo-container">
@@ -70,6 +68,19 @@
   </div>
 
   <script>
+    // Dynamically load JSZip from host domain to bypass <base> tag redirect
+    (function loadJSZipLibrary() {
+      const jszipScript = document.createElement('script');
+      jszipScript.src = new URL('jszip.min.js', window.location.href).href;
+      jszipScript.onerror = function() {
+        // Fallback to JSDelivr under your repo if local fails
+        const fallback = document.createElement('script');
+        fallback.src = 'https://cdn.jsdelivr.net/gh/FunkinOnAFridayNight/deltarune@main/jszip.min.js';
+        document.head.appendChild(fallback);
+      };
+      document.head.appendChild(jszipScript);
+    })();
+
     const audio = document.getElementById('drone');
     const mute = document.getElementById('mute');
     let gamestarted = false;
@@ -172,7 +183,7 @@
       }
     });
 
-    // Known standard Deltarune save filenames
+    // Standard Deltarune save file names
     const DELTARUNE_FILES = [
       'dr.ini',
       'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5',
@@ -181,17 +192,17 @@
       'filech4_0', 'filech4_1', 'filech4_2', 'filech4_3', 'filech4_4', 'filech4_5'
     ];
 
-    // Universal Export: Pulls from Emscripten Virtual FS and all local storage keys
+    // Export: Pulls from Emscripten Virtual FS and all local storage keys
     async function exportAllSaves() {
       if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait a moment and try again.");
+        alert("Zip library is still loading. Please wait 3 seconds and try again.");
         return;
       }
 
       const zip = new JSZip();
       let foundCount = 0;
 
-      // 1. Export from active Emscripten Virtual File System if running inside a chapter
+      // 1. Export from active Emscripten Virtual File System if inside game
       if (typeof FS !== 'undefined') {
         DELTARUNE_FILES.forEach(filename => {
           try {
@@ -204,7 +215,7 @@
         });
       }
 
-      // 2. Catch-all: Export everything currently in LocalStorage
+      // 2. Export everything currently in LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         const value = localStorage.getItem(key);
@@ -230,13 +241,13 @@
       document.body.removeChild(link);
     }
 
-    // Universal Import: Restores ZIP files to LocalStorage and Emscripten FS
+    // Import: Restores ZIP files to LocalStorage and Emscripten FS
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
 
       if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait a moment and try again.");
+        alert("Zip library is still loading. Please wait 3 seconds and try again.");
         return;
       }
 
@@ -248,16 +259,16 @@
           const zipEntry = zip.files[relativePath];
           if (zipEntry.dir) continue;
 
-          // Strip folder path from zipped files
+          // Strip folder paths
           const fileName = relativePath.split('/').pop();
           if (!fileName) continue;
 
           const content = await zipEntry.async('string');
 
-          // Write key to LocalStorage
+          // Save to LocalStorage
           localStorage.setItem(fileName, content);
 
-          // Write key to Emscripten FS if game engine is currently running
+          // Save to Emscripten FS if active
           if (typeof FS !== 'undefined') {
             try {
               FS.writeFile('/' + fileName, content);
