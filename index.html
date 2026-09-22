@@ -60,15 +60,15 @@
   <button id="mute">🔊</button>
 
   <!-- Persistent Save Backup & Restore UI -->
-  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white;">
-    <button onclick="exportAllSaves()" style="margin-bottom: 5px; width: 100%; padding: 6px; cursor: pointer; border-radius: 4px; font-weight: bold;">📦 Export Zip Save</button>
+  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #444;">
+    <button onclick="exportAllSaves()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #22c55e; color: white; border: none;">📦 Export Zip Save</button>
     <br>
     <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
-    <button onclick="document.getElementById('importAllInput').click()" style="width: 100%; padding: 6px; cursor: pointer; border-radius: 4px; font-weight: bold;">📥 Import Zip Save</button>
+    <button onclick="document.getElementById('importAllInput').click()" style="width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #3b82f6; color: white; border: none;">📥 Import Zip Save</button>
   </div>
 
   <script>
-    // Dynamically load JSZip library from your repository
+    // Load JSZip library safely
     (function loadJSZipLibrary() {
       const jszipScript = document.createElement('script');
       jszipScript.src = new URL('jszip.min.js', window.location.href).href;
@@ -189,39 +189,58 @@
       'filech4_0', 'filech4_1', 'filech4_2', 'filech4_3', 'filech4_4', 'filech4_5'
     ];
 
-    // Writes files into Emscripten IndexedDB store (/idbfs)
-    function writeToIndexedDB(fileName, textContent) {
+    // Opens or initializes the Emscripten IndexedDB instance
+    function getIndexedDBStore() {
       return new Promise((resolve) => {
-        const request = indexedDB.open('/idbfs');
+        const request = indexedDB.open('/idbfs', 1);
+        request.onupgradeneeded = function(e) {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('FILE_DATA')) {
+            db.createObjectStore('FILE_DATA');
+          }
+        };
         request.onsuccess = function(e) {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('FILE_DATA')) {
             db.close();
-            return resolve();
+            return resolve(null);
           }
-          const tx = db.transaction(['FILE_DATA'], 'readwrite');
-          const store = tx.objectStore('FILE_DATA');
-          const encoder = new TextEncoder();
-          const uint8Data = encoder.encode(textContent);
-
-          const pathVariations = [
-            '/' + fileName,
-            fileName,
-            '/home/web_user/gamedata/' + fileName
-          ];
-
-          pathVariations.forEach(pathKey => {
-            store.put({
-              timestamp: new Date(),
-              mode: 33206,
-              contents: uint8Data
-            }, pathKey);
-          });
-
-          tx.oncomplete = function() { db.close(); resolve(); };
-          tx.onerror = function() { db.close(); resolve(); };
+          resolve(db);
         };
-        request.onerror = function() { resolve(); };
+        request.onerror = function() {
+          resolve(null);
+        };
+      });
+    }
+
+    // Writes raw file bytes into IndexedDB
+    async function writeToIndexedDB(fileName, textContent) {
+      const db = await getIndexedDBStore();
+      if (!db) return;
+
+      return new Promise((resolve) => {
+        const tx = db.transaction(['FILE_DATA'], 'readwrite');
+        const store = tx.objectStore('FILE_DATA');
+        const encoder = new TextEncoder();
+        const uint8Data = encoder.encode(textContent);
+
+        const pathVariations = [
+          '/' + fileName,
+          fileName,
+          '/home/web_user/gamedata/' + fileName,
+          '/working/' + fileName
+        ];
+
+        pathVariations.forEach(pathKey => {
+          store.put({
+            timestamp: new Date(),
+            mode: 33206,
+            contents: uint8Data
+          }, pathKey);
+        });
+
+        tx.oncomplete = function() { db.close(); resolve(); };
+        tx.onerror = function() { db.close(); resolve(); };
       });
     }
 
@@ -235,11 +254,12 @@
       const zip = new JSZip();
       let foundCount = 0;
 
-      // 1. Check Emscripten FS
-      if (typeof FS !== 'undefined') {
+      const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
+
+      if (activeFS) {
         DELTARUNE_FILES.forEach(filename => {
           try {
-            const content = FS.readFile('/' + filename, { encoding: 'utf8' });
+            const content = activeFS.readFile('/' + filename, { encoding: 'utf8' });
             if (content && content.length > 0) {
               zip.file(filename, content);
               foundCount++;
@@ -248,7 +268,6 @@
         });
       }
 
-      // 2. Check LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         const value = localStorage.getItem(key);
@@ -261,7 +280,7 @@
       }
 
       if (foundCount === 0) {
-        alert("No save files found! Make sure to save in-game at a yellow Save Point first.");
+        alert("No save files found! Make sure you walk up to a yellow Save Point star in-game and save first.");
         return;
       }
 
@@ -274,7 +293,7 @@
       document.body.removeChild(link);
     }
 
-    // Import function with direct IndexedDB sync
+    // Import function
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
@@ -287,6 +306,7 @@
       try {
         const zip = await JSZip.loadAsync(file);
         let importedCount = 0;
+        let importedNames = [];
 
         for (const relativePath of Object.keys(zip.files)) {
           const zipEntry = zip.files[relativePath];
@@ -300,36 +320,41 @@
           // 1. Save to LocalStorage under multiple path prefixes
           localStorage.setItem(fileName, content);
           localStorage.setItem('/' + fileName, content);
-          localStorage.setItem('DELTARUNE/' + fileName, content);
+          localStorage.setItem('GMS2_' + fileName, content);
 
           // 2. Save directly to IndexedDB (/idbfs)
           await writeToIndexedDB(fileName, content);
 
-          // 3. Save to Emscripten active FS if game is currently loaded
-          if (typeof FS !== 'undefined') {
+          // 3. Save to active Emscripten FS if game is running
+          const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
+          if (activeFS) {
             try {
-              FS.writeFile('/' + fileName, content);
+              activeFS.writeFile('/' + fileName, content);
+              activeFS.writeFile(fileName, content);
             } catch (err) {}
           }
+
           importedCount++;
+          importedNames.push(fileName);
         }
 
         if (importedCount === 0) {
-          alert("No valid save files were found inside this ZIP file.");
+          alert("No valid files found inside this ZIP archive.");
           return;
         }
 
-        if (typeof FS !== 'undefined' && FS.syncfs) {
-          FS.syncfs(false, function() {
-            alert(`Successfully imported ${importedCount} file(s)! Reloading page...`);
+        const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
+        if (activeFS && activeFS.syncfs) {
+          activeFS.syncfs(false, function() {
+            alert(`Imported ${importedCount} file(s): (${importedNames.join(', ')})!\nReloading page now...`);
             location.reload();
           });
         } else {
-          alert(`Successfully imported ${importedCount} file(s)! Reloading page...`);
+          alert(`Imported ${importedCount} file(s): (${importedNames.join(', ')})!\nReloading page now...`);
           location.reload();
         }
       } catch (err) {
-        alert("Failed to parse ZIP archive. Please select a valid .zip save file.");
+        alert("Error parsing ZIP file: " + err.message);
       }
     }
   </script>
