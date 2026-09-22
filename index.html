@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/">
   <meta charset="UTF-8">
+  <title>DELTARUNE</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,7 +61,7 @@
 
   <!-- Persistent Save Backup & Restore UI Overlay -->
   <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 999999; background: rgba(0,0,0,0.9); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #555; min-width: 170px;">
-    <div style="font-size: 10px; color: #aaa; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.3</div>
+    <div style="font-size: 10px; color: #aaa; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.4</div>
     <button onclick="exportAllSaves()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #22c55e; color: white; border: none;">📦 Export Zip Save</button>
     <br>
     <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
@@ -71,368 +71,13 @@
   </div>
 
   <script>
-    // Load JSZip library safely
+    // Load JSZip library safely without external base dependency
     (function loadJSZipLibrary() {
       const jszipScript = document.createElement('script');
-      jszipScript.src = new URL('jszip.min.js', window.location.href).href;
+      jszipScript.src = 'jszip.min.js';
       jszipScript.onerror = function() {
         const fallback = document.createElement('script');
-        fallback.src = 'https://cdn.jsdelivr.net/gh/FunkinOnAFridayNight/deltarune@main/jszip.min.js';
-        document.head.appendChild(fallback);
-      };
-      document.head.appendChild(jszipScript);
-    })();
-
-    const audio = document.getElementById('drone');
-    const mute = document.getElementById('mute');
-    let gamestarted = false;
-  
-    mute.addEventListener('click', () => {
-      if (!gamestarted) {
-        audio.muted = !audio.muted;
-        updateButton(); 
-      }
-    });
-  
-    function updateButton() {
-      if (!gamestarted) {
-        mute.textContent = audio.muted ? '🔊' : '🔇';
-      }
-    }
-  
-    updateButton();
-
-    // Isolated iframe chapter loader to prevent WASM/Emscripten memory pollution
-    function loadChapter(chapter) {
-      gamestarted = true;
-      if (audio) audio.pause();
-
-      let frame = document.getElementById('game-frame');
-      if (!frame) {
-        frame = document.createElement('iframe');
-        frame.id = 'game-frame';
-        frame.style.position = 'fixed';
-        frame.style.top = '0';
-        frame.style.left = '0';
-        frame.style.width = '100vw';
-        frame.style.height = '100vh';
-        frame.style.border = 'none';
-        frame.style.zIndex = '100000';
-        document.body.appendChild(frame);
-      }
-      
-      // Load chapter directly in clean frame context
-      frame.src = `chapter${chapter}/index.html`;
-
-      // Ensure Save UI sits above iframe
-      const saveUI = document.getElementById('save-manager-ui');
-      if (saveUI) {
-        document.body.appendChild(saveUI);
-      }
-    }
-
-    const menumoveaudio = new Audio('audios/snd_menumove.mp3');
-    const menuselectaudio = new Audio('audios/snd_select.mp3');
-    
-    document.querySelectorAll('.row').forEach(row => {
-      row.addEventListener('mouseenter', () => {
-        if (!gamestarted) {
-          menumoveaudio.play();
-          if (selectedChapter !== null && document.querySelectorAll('.row')[selectedChapter]) {
-            document.querySelectorAll('.row')[selectedChapter].classList.remove("selected");
-          }
-        }
-      });
-      row.addEventListener('click', () => {
-        if (!gamestarted) {
-          menuselectaudio.play();
-        }
-      });
-    });
-
-    let selectedChapter = null;
-    document.addEventListener('keydown', function(event) {
-      if (!gamestarted) {
-        const rows = document.querySelectorAll('.row');
-        if (event.key === 'ArrowUp') {
-          if (selectedChapter === null) {
-            selectedChapter = 0;
-            rows[0].classList.add("selected");
-            menumoveaudio.play();
-          } else {
-            rows[selectedChapter].classList.remove("selected");
-            selectedChapter--;
-            if (selectedChapter < 0) {
-              selectedChapter = rows.length - 1;
-            }
-            rows[selectedChapter].classList.add("selected");
-            menumoveaudio.play();
-          }
-        } else if (event.key === 'ArrowDown') {
-          if (selectedChapter === null) {
-            selectedChapter = 0;
-            rows[0].classList.add("selected");
-            menumoveaudio.play();
-          } else {
-            rows[selectedChapter].classList.remove("selected");
-            selectedChapter++;
-            if (selectedChapter >= rows.length) {
-              selectedChapter = 0;
-            }
-            rows[selectedChapter].classList.add("selected");
-            menumoveaudio.play();
-          }
-        } else if (event.key === 'Enter') {
-          if (selectedChapter !== null && rows[selectedChapter]) {
-            rows[selectedChapter].click();
-          } 
-        }
-      }
-    });
-
-    const DELTARUNE_FILES = [
-      'dr.ini',
-      'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5',
-      'filech2_0', 'filech2_1', 'filech2_2', 'filech2_3', 'filech2_4', 'filech2_5',
-      'filech3_0', 'filech3_1', 'filech3_2', 'filech3_3', 'filech3_4', 'filech3_5'
-    ];
-
-    function openIDB() {
-      return new Promise((resolve) => {
-        const req = indexedDB.open('/idbfs', 1);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('FILE_DATA')) {
-            db.createObjectStore('FILE_DATA');
-          }
-        };
-        req.onsuccess = (e) => resolve(e.target.result);
-        req.onerror = () => resolve(null);
-      });
-    }
-
-    async function writeToIndexedDB(fileName, textContent) {
-      const db = await openIDB();
-      if (!db) return;
-
-      return new Promise((resolve) => {
-        try {
-          const tx = db.transaction(['FILE_DATA'], 'readwrite');
-          const store = tx.objectStore('FILE_DATA');
-          const encoder = new TextEncoder();
-          const uint8Data = encoder.encode(textContent);
-
-          const pathKeys = [
-            '/' + fileName,
-            fileName,
-            '/home/web_user/gamedata/' + fileName,
-            '/working/' + fileName
-          ];
-
-          pathKeys.forEach(p => {
-            store.put({
-              timestamp: new Date(),
-              mode: 33206,
-              contents: uint8Data
-            }, p);
-          });
-
-          tx.oncomplete = () => { db.close(); resolve(); };
-          tx.onerror = () => { db.close(); resolve(); };
-        } catch(err) {
-          if (db) db.close();
-          resolve();
-        }
-      });
-    }
-
-    async function readFromIndexedDB() {
-      const db = await openIDB();
-      if (!db) return {};
-
-      return new Promise((resolve) => {
-        const results = {};
-        try {
-          const tx = db.transaction(['FILE_DATA'], 'readonly');
-          const store = tx.objectStore('FILE_DATA');
-          const req = store.openCursor();
-
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor) {
-              const pathKey = cursor.key;
-              const val = cursor.value;
-              const cleanName = String(pathKey).split('/').pop();
-
-              if (val && val.contents) {
-                const decoder = new TextDecoder();
-                const str = decoder.decode(val.contents);
-                if (str && str.length > 0) {
-                  results[cleanName] = str;
-                }
-              }
-              cursor.continue();
-            } else {
-              db.close();
-              resolve(results);
-            }
-          };
-          req.onerror = () => { db.close(); resolve(results); };
-        } catch(err) {
-          if (db) db.close();
-          resolve(results);
-        }
-      });
-    }
-
-    function getActiveFS() {
-      const frame = document.getElementById('game-frame');
-      if (frame && frame.contentWindow) {
-        if (frame.contentWindow.FS) return frame.contentWindow.FS;
-        if (frame.contentWindow.Module && frame.contentWindow.Module.FS) return frame.contentWindow.Module.FS;
-      }
-      if (typeof FS !== 'undefined') return FS;
-      if (window.Module && window.Module.FS) return window.Module.FS;
-      return null;
-    }
-
-    // Diagnostic tool to view exact key names currently saved in browser
-    function debugStorageKeys() {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        keys.push(localStorage.key(i));
-      }
-      if (keys.length === 0) {
-        alert("LocalStorage is completely empty right now.\n\nMake sure to interact with a Save Star in Chapter 1/2 first!");
-      } else {
-        alert("Current LocalStorage Keys:\n\n" + keys.join("\n"));
-      }
-    }
-
-    // Universal Export
-    async function exportAllSaves() {
-      if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait 3 seconds and try again.");
-        return;
-      }
-
-      const zip = new JSZip();
-      let foundCount = 0;
-
-      // 1. Read from Active Emscripten FS inside chapter iframe
-      const activeFS = getActiveFS();
-      if (activeFS) {
-        DELTARUNE_FILES.forEach(filename => {
-          try {
-            const content = activeFS.readFile('/' + filename, { encoding: 'utf8' });
-            if (content && content.length > 0) {
-              zip.file(filename, content);
-              foundCount++;
-            }
-          } catch (err) {}
-        });
-      }
-
-      // 2. Read from IndexedDB (/idbfs)
-      const idbFiles = await readFromIndexedDB();
-      for (const [name, content] of Object.entries(idbFiles)) {
-        if (!zip.file(name) && content && content.length > 0) {
-          zip.file(name, content);
-          foundCount++;
-        }
-      }
-
-      // 3. Read from LocalStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        const value = localStorage.getItem(key);
-        const cleanName = key.replace(/^(GMS2_|\/)/, '').split('/').pop();
-        
-        if (value && value.length > 0 && !zip.file(cleanName)) {
-          zip.file(cleanName, value);
-          foundCount++;
-        }
-      }
-
-      if (foundCount === 0) {
-        alert("No save files found! Make sure to save in-game at a yellow Save Point first.");
-        return;
-      }
-
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = 'deltarune_saves.zip';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    // Universal Import
-    async function importAllSaves(fileInput) {
-      const file = fileInput.files[0];
-      if (!file) return;
-
-      if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait 3 seconds and try again.");
-        return;
-      }
-
-      try {
-        const zip = await JSZip.loadAsync(file);
-        let importedCount = 0;
-        let importedNames = [];
-
-        for (const relativePath of Object.keys(zip.files)) {
-          const zipEntry = zip.files[relativePath];
-          if (zipEntry.dir) continue;
-
-          const fileName = relativePath.split('/').pop();
-          if (!fileName) continue;
-
-          const content = await zipEntry.async('string');
-
-          // 1. Populate all potential GameMaker LocalStorage key formats
-          localStorage.setItem(fileName, content);
-          localStorage.setItem('/' + fileName, content);
-          localStorage.setItem('GMS2_' + fileName, content);
-          localStorage.setItem('GMS2_file_' + fileName, content);
-
-          // 2. Write directly to IndexedDB (/idbfs)
-          await writeToIndexedDB(fileName, content);
-
-          // 3. Write directly to active Game Frame FS if game is running
-          const activeFS = getActiveFS();
-          if (activeFS) {
-            try {
-              activeFS.writeFile('/' + fileName, content);
-              activeFS.writeFile(fileName, content);
-            } catch (err) {}
-          }
-
-          importedCount++;
-          importedNames.push(fileName);
-        }
-
-        if (importedCount === 0) {
-          alert("No valid save files were found inside this ZIP archive.");
-          return;
-        }
-
-        alert(`Successfully imported ${importedCount} file(s): (${importedNames.join(', ')})!\n\nReloading page now...`);
-        location.reload();
-      } catch (err) {
-        alert("Error parsing ZIP file: " + err.message);
-      }
-    }
- <script>
-    // Load JSZip library safely
-    (function loadJSZipLibrary() {
-      const jszipScript = document.createElement('script');
-      jszipScript.src = new URL('jszip.min.js', window.location.href).href;
-      jszipScript.onerror = function() {
-        const fallback = document.createElement('script');
-        fallback.src = 'https://cdn.jsdelivr.net/gh/FunkinOnAFridayNight/deltarune@main/jszip.min.js';
+        fallback.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
         document.head.appendChild(fallback);
       };
       document.head.appendChild(jszipScript);
@@ -475,7 +120,9 @@
         document.body.appendChild(frame);
       }
       
-      frame.src = `chapter${chapter}/index.html`;
+      // Calculate local path relative to current domain location
+      const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+      frame.src = window.location.origin + basePath + `chapter${chapter}/index.html`;
 
       const saveUI = document.getElementById('save-manager-ui');
       if (saveUI) {
@@ -542,7 +189,6 @@
       }
     });
 
-    // Complete set of Deltarune standard, completion, config, and asset state files
     const DELTARUNE_FILES = [
       'dr.ini', 'config_0.ini', 'keyconfig_0.ini', 'vacationmemories.png',
       'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5', 'filech1_9',
@@ -662,7 +308,6 @@
       }
     }
 
-    // Export with all GameMaker prefix patterns checked
     async function exportAllSaves() {
       if (typeof JSZip === 'undefined') {
         alert("Zip library is loading. Please wait 3 seconds and try again.");
@@ -718,7 +363,6 @@
       document.body.removeChild(link);
     }
 
-    // Import and write across every prefix variant GameMaker checks
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
@@ -740,11 +384,9 @@
           const rawName = relativePath.split('/').pop();
           if (!rawName) continue;
 
-          // Normalize name by stripping pre-existing prefixes from zip
           const fileName = rawName.replace(/^(GMS2_|\/)/, '');
           const content = await zipEntry.async('string');
 
-          // Write to all prefix combinations GameMaker checks
           localStorage.setItem(fileName, content);
           localStorage.setItem('/' + fileName, content);
           localStorage.setItem('GMS2_' + fileName, content);
@@ -770,7 +412,7 @@
           return;
         }
 
-        alert(`Successfully imported ${importedCount} file(s) across all format prefixes!\n\nReloading page now...`);
+        alert(`Successfully imported ${importedCount} file(s)!\n\nReloading page now...`);
         location.reload();
       } catch (err) {
         alert("Error parsing ZIP file: " + err.message);
