@@ -26,10 +26,10 @@
       <span class="title">Late Night</span>
       <img src="icons/3.png">
     </a>
-    <a href="javascript:loadChapter(4)" class="row">
+    <a href="javascript:alert('Chapter 4 disabled to stay under GitHub 1GB limit!')" class="disabled-row">
       <span class="chapter">Chapter 4</span>
-      <span class="title">Prophecy</span>
-      <img src="icons/4.png">
+      <span class="disabled-title">--</span>
+      <img src="icons/0.png">
     </a>
     <a href="javascript:alert('Chapter 5 coming soon!')" class="disabled-row">
       <span class="chapter">Chapter 5</span>
@@ -59,7 +59,7 @@
   </audio>
   <button id="mute">🔊</button>
 
-  <!-- Persistent Save Backup & Restore UI -->
+  <!-- Persistent Save Backup & Restore UI Overlay -->
   <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #444; min-width: 160px;">
     <div style="font-size: 10px; color: #888; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.2</div>
     <button onclick="exportAllSaves()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #22c55e; color: white; border: none;">📦 Export Zip Save</button>
@@ -69,7 +69,7 @@
   </div>
 
   <script>
-    // Load JSZip library safely
+    // Load JSZip library safely without relying on <base> redirect
     (function loadJSZipLibrary() {
       const jszipScript = document.createElement('script');
       jszipScript.src = new URL('jszip.min.js', window.location.href).href;
@@ -186,66 +186,99 @@
       'dr.ini',
       'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5',
       'filech2_0', 'filech2_1', 'filech2_2', 'filech2_3', 'filech2_4', 'filech2_5',
-      'filech3_0', 'filech3_1', 'filech3_2', 'filech3_3', 'filech3_4', 'filech3_5',
-      'filech4_0', 'filech4_1', 'filech4_2', 'filech4_3', 'filech4_4', 'filech4_5'
+      'filech3_0', 'filech3_1', 'filech3_2', 'filech3_3', 'filech3_4', 'filech3_5'
     ];
 
-    // Opens or initializes the Emscripten IndexedDB instance
-    function getIndexedDBStore() {
+    // IndexedDB initialization & helper functions
+    function openIDB() {
       return new Promise((resolve) => {
-        const request = indexedDB.open('/idbfs', 1);
-        request.onupgradeneeded = function(e) {
+        const req = indexedDB.open('/idbfs', 1);
+        req.onupgradeneeded = (e) => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('FILE_DATA')) {
             db.createObjectStore('FILE_DATA');
           }
         };
-        request.onsuccess = function(e) {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('FILE_DATA')) {
-            db.close();
-            return resolve(null);
-          }
-          resolve(db);
-        };
-        request.onerror = function() {
-          resolve(null);
-        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => resolve(null);
       });
     }
 
-    // Writes raw file bytes into IndexedDB
     async function writeToIndexedDB(fileName, textContent) {
-      const db = await getIndexedDBStore();
+      const db = await openIDB();
       if (!db) return;
 
       return new Promise((resolve) => {
-        const tx = db.transaction(['FILE_DATA'], 'readwrite');
-        const store = tx.objectStore('FILE_DATA');
-        const encoder = new TextEncoder();
-        const uint8Data = encoder.encode(textContent);
+        try {
+          const tx = db.transaction(['FILE_DATA'], 'readwrite');
+          const store = tx.objectStore('FILE_DATA');
+          const encoder = new TextEncoder();
+          const uint8Data = encoder.encode(textContent);
 
-        const pathVariations = [
-          '/' + fileName,
-          fileName,
-          '/home/web_user/gamedata/' + fileName,
-          '/working/' + fileName
-        ];
+          const pathKeys = [
+            '/' + fileName,
+            fileName,
+            '/home/web_user/gamedata/' + fileName,
+            '/working/' + fileName
+          ];
 
-        pathVariations.forEach(pathKey => {
-          store.put({
-            timestamp: new Date(),
-            mode: 33206,
-            contents: uint8Data
-          }, pathKey);
-        });
+          pathKeys.forEach(p => {
+            store.put({
+              timestamp: new Date(),
+              mode: 33206,
+              contents: uint8Data
+            }, p);
+          });
 
-        tx.oncomplete = function() { db.close(); resolve(); };
-        tx.onerror = function() { db.close(); resolve(); };
+          tx.oncomplete = () => { db.close(); resolve(); };
+          tx.onerror = () => { db.close(); resolve(); };
+        } catch(err) {
+          db.close();
+          resolve();
+        }
       });
     }
 
-    // Export function
+    async function readFromIndexedDB() {
+      const db = await openIDB();
+      if (!db) return {};
+
+      return new Promise((resolve) => {
+        const results = {};
+        try {
+          const tx = db.transaction(['FILE_DATA'], 'readonly');
+          const store = tx.objectStore('FILE_DATA');
+          const req = store.openCursor();
+
+          req.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+              const pathKey = cursor.key;
+              const val = cursor.value;
+              const cleanName = String(pathKey).split('/').pop();
+
+              if (val && val.contents) {
+                const decoder = new TextDecoder();
+                const str = decoder.decode(val.contents);
+                if (str && str.length > 0) {
+                  results[cleanName] = str;
+                }
+              }
+              cursor.continue();
+            } else {
+              db.close();
+              resolve(results);
+            }
+          };
+          req.onerror = () => { db.close(); resolve(results); };
+        } catch(err) {
+          db.close();
+          resolve(results);
+        }
+      });
+    }
+
+    // Universal Export Function
     async function exportAllSaves() {
       if (typeof JSZip === 'undefined') {
         alert("Zip library is loading. Please wait 3 seconds and try again.");
@@ -255,8 +288,8 @@
       const zip = new JSZip();
       let foundCount = 0;
 
+      // 1. Check Active Emscripten Virtual File System
       const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
-
       if (activeFS) {
         DELTARUNE_FILES.forEach(filename => {
           try {
@@ -269,10 +302,20 @@
         });
       }
 
+      // 2. Check IndexedDB (/idbfs)
+      const idbFiles = await readFromIndexedDB();
+      for (const [name, content] of Object.entries(idbFiles)) {
+        if (!zip.file(name) && content && content.length > 0) {
+          zip.file(name, content);
+          foundCount++;
+        }
+      }
+
+      // 3. Check LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         const value = localStorage.getItem(key);
-        const cleanName = key.split('/').pop();
+        const cleanName = key.replace(/^(GMS2_|\/)/, '').split('/').pop();
         
         if (value && value.length > 0 && !zip.file(cleanName)) {
           zip.file(cleanName, value);
@@ -281,7 +324,7 @@
       }
 
       if (foundCount === 0) {
-        alert("No save files found! Make sure you walk up to a yellow Save Point star in-game and save first.");
+        alert("No save files found! Make sure you save in-game at a yellow Save Point star first.");
         return;
       }
 
@@ -294,7 +337,7 @@
       document.body.removeChild(link);
     }
 
-    // Import function
+    // Universal Import Function
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
@@ -318,7 +361,7 @@
 
           const content = await zipEntry.async('string');
 
-          // 1. Save to LocalStorage under multiple path prefixes
+          // 1. Save to LocalStorage across all GameMaker web key formats
           localStorage.setItem(fileName, content);
           localStorage.setItem('/' + fileName, content);
           localStorage.setItem('GMS2_' + fileName, content);
@@ -326,7 +369,7 @@
           // 2. Save directly to IndexedDB (/idbfs)
           await writeToIndexedDB(fileName, content);
 
-          // 3. Save to active Emscripten FS if game is running
+          // 3. Write to active Emscripten FS if game engine is loaded
           const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
           if (activeFS) {
             try {
@@ -340,7 +383,7 @@
         }
 
         if (importedCount === 0) {
-          alert("No valid files found inside this ZIP archive.");
+          alert("No valid save files were found inside this ZIP file.");
           return;
         }
 
