@@ -4,6 +4,8 @@
   <base href="https://cdn.jsdelivr.net/gh/technonyte00/deltarune@main/">
   <meta charset="UTF-8">
   <link rel="stylesheet" href="style.css">
+  <!-- JSZip Library for ZIP Export/Import -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
   <div class="logo-container">
@@ -59,12 +61,12 @@
   </audio>
   <button id="mute">🔊</button>
 
-  <!-- Deltarune Full Save Backup & Restore UI -->
+  <!-- Deltarune Zip Save Manager UI -->
   <div style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white;">
-    <button onclick="exportAllSaves()" style="margin-bottom: 5px; width: 100%; padding: 6px; cursor: pointer; border-radius: 4px;">📦 Export All Saves</button>
+    <button onclick="exportAllSaves()" style="margin-bottom: 5px; width: 100%; padding: 6px; cursor: pointer; border-radius: 4px;">📦 Export Zip Save</button>
     <br>
-    <input type="file" id="importAllInput" accept=".json" style="display:none" onchange="importAllSaves(this)">
-    <button onclick="document.getElementById('importAllInput').click()" style="width: 100%; padding: 6px; cursor: pointer; border-radius: 4px;">📥 Import All Saves</button>
+    <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
+    <button onclick="document.getElementById('importAllInput').click()" style="width: 100%; padding: 6px; cursor: pointer; border-radius: 4px;">📥 Import Zip Save</button>
   </div>
 
   <script>
@@ -162,7 +164,7 @@
       }
     });
 
-    // Integrated Universal Save Export/Import logic
+    // Save File Tracking
     const DELTARUNE_FILES = [
       'dr.ini',
       'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5',
@@ -171,27 +173,35 @@
       'filech4_0', 'filech4_1', 'filech4_2', 'filech4_3', 'filech4_4', 'filech4_5'
     ];
 
-    function exportAllSaves() {
-      const backupData = {};
+    // Export all save files to a ZIP archive
+    async function exportAllSaves() {
+      if (typeof JSZip === 'undefined') {
+        alert("Zip library is loading. Please try again in a moment.");
+        return;
+      }
+
+      const zip = new JSZip();
       let foundCount = 0;
 
-      // Check Emscripten Virtual File System if active
+      // 1. Gather files from Emscripten FS
       if (typeof FS !== 'undefined') {
         DELTARUNE_FILES.forEach(filename => {
           try {
             const content = FS.readFile('/' + filename, { encoding: 'utf8' });
-            backupData[filename] = content;
+            zip.file(filename, content);
             foundCount++;
           } catch (err) {}
         });
       }
 
-      // Fallback/Supplement with LocalStorage keys
+      // 2. Gather files from LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (DELTARUNE_FILES.includes(key) || key.startsWith('filech') || key.startsWith('dr.')) {
-          backupData[key] = localStorage.getItem(key);
-          foundCount++;
+          if (!zip.file(key)) {
+            zip.file(key, localStorage.getItem(key));
+            foundCount++;
+          }
         }
       }
 
@@ -200,52 +210,70 @@
         return;
       }
 
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      // Generate .zip file and trigger download
+      const zipBlob = await zip.generateAsync({ type: "blob" });
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'deltarune_all_saves.json';
+      link.href = URL.createObjectURL(zipBlob);
+      link.download = 'deltarune_saves.zip';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
 
-    function importAllSaves(fileInput) {
+    // Import save files from a ZIP archive
+    async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const backupData = JSON.parse(e.target.result);
-          let importedCount = 0;
+      if (typeof JSZip === 'undefined') {
+        alert("Zip library is loading. Please try again in a moment.");
+        return;
+      }
 
-          for (const [filename, content] of Object.entries(backupData)) {
-            // Write to LocalStorage
-            localStorage.setItem(filename, content);
+      try {
+        const zip = await JSZip.loadAsync(file);
+        let importedCount = 0;
 
-            // Write to Emscripten FS if loaded
+        for (const relativePath of Object.keys(zip.files)) {
+          const zipEntry = zip.files[relativePath];
+          if (zipEntry.dir) continue;
+
+          // Extracts clean filename even if inside folders like "DELTARUNE/filech1_0"
+          const fileName = relativePath.split('/').pop();
+
+          if (DELTARUNE_FILES.includes(fileName) || fileName.startsWith('filech') || fileName.startsWith('dr.')) {
+            const content = await zipEntry.async('string');
+
+            // Save to LocalStorage
+            localStorage.setItem(fileName, content);
+
+            // Save to Emscripten FS if active
             if (typeof FS !== 'undefined') {
               try {
-                FS.writeFile('/' + filename, content);
+                FS.writeFile('/' + fileName, content);
               } catch (err) {}
             }
             importedCount++;
           }
-
-          if (typeof FS !== 'undefined' && FS.syncfs) {
-            FS.syncfs(false, function(err) {
-              alert(`Successfully imported ${importedCount} save file(s)! Reloading page...`);
-              location.reload();
-            });
-          } else {
-            alert(`Successfully imported ${importedCount} save file(s)! Reloading page...`);
-            location.reload();
-          }
-        } catch (err) {
-          alert("Invalid backup file format. Please select a valid deltarune_all_saves.json file.");
         }
-      };
-      reader.readAsText(file);
+
+        if (importedCount === 0) {
+          alert("No valid Deltarune save files (e.g. filech1_0, dr.ini) were found inside this ZIP.");
+          return;
+        }
+
+        if (typeof FS !== 'undefined' && FS.syncfs) {
+          FS.syncfs(false, function(err) {
+            alert(`Successfully imported ${importedCount} file(s) from ZIP! Reloading...`);
+            location.reload();
+          });
+        } else {
+          alert(`Successfully imported ${importedCount} file(s) from ZIP! Reloading...`);
+          location.reload();
+        }
+      } catch (err) {
+        alert("Failed to parse ZIP archive. Make sure you selected a valid .zip file.");
+      }
     }
   </script>
 </body>
