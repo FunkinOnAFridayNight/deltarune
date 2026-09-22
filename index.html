@@ -60,16 +60,18 @@
   <button id="mute">🔊</button>
 
   <!-- Persistent Save Backup & Restore UI Overlay -->
-  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #444; min-width: 160px;">
-    <div style="font-size: 10px; color: #888; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.2</div>
+  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 999999; background: rgba(0,0,0,0.9); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #555; min-width: 170px;">
+    <div style="font-size: 10px; color: #aaa; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.3</div>
     <button onclick="exportAllSaves()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #22c55e; color: white; border: none;">📦 Export Zip Save</button>
     <br>
     <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
-    <button onclick="document.getElementById('importAllInput').click()" style="width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #3b82f6; color: white; border: none;">📥 Import Zip Save</button>
+    <button onclick="document.getElementById('importAllInput').click()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #3b82f6; color: white; border: none;">📥 Import Zip Save</button>
+    <br>
+    <button onclick="debugStorageKeys()" style="width: 100%; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; background: #444; color: #ccc; border: none;">🔍 Check Storage Keys</button>
   </div>
 
   <script>
-    // Load JSZip library safely without relying on <base> redirect
+    // Load JSZip library safely
     (function loadJSZipLibrary() {
       const jszipScript = document.createElement('script');
       jszipScript.src = new URL('jszip.min.js', window.location.href).href;
@@ -100,27 +102,33 @@
   
     updateButton();
 
+    // Isolated iframe chapter loader to prevent WASM/Emscripten memory pollution
     function loadChapter(chapter) {
-      const saveUI = document.getElementById('save-manager-ui');
-      
-      fetch(`chapter${chapter}/index.html`).then(res => res.text()).then(html => {
-        gamestarted = true;
-        document.documentElement.innerHTML = html;
-        
-        if (saveUI) {
-          document.body.appendChild(saveUI);
-        }
+      gamestarted = true;
+      if (audio) audio.pause();
 
-        document.documentElement.querySelectorAll('script').forEach(oldScript => {
-          const newScript = document.createElement('script');
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-          } else {
-            newScript.textContent = oldScript.textContent;
-          }
-          document.body.appendChild(newScript);
-        });
-      });
+      let frame = document.getElementById('game-frame');
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.id = 'game-frame';
+        frame.style.position = 'fixed';
+        frame.style.top = '0';
+        frame.style.left = '0';
+        frame.style.width = '100vw';
+        frame.style.height = '100vh';
+        frame.style.border = 'none';
+        frame.style.zIndex = '100000';
+        document.body.appendChild(frame);
+      }
+      
+      // Load chapter directly in clean frame context
+      frame.src = `chapter${chapter}/index.html`;
+
+      // Ensure Save UI sits above iframe
+      const saveUI = document.getElementById('save-manager-ui');
+      if (saveUI) {
+        document.body.appendChild(saveUI);
+      }
     }
 
     const menumoveaudio = new Audio('audios/snd_menumove.mp3');
@@ -189,7 +197,6 @@
       'filech3_0', 'filech3_1', 'filech3_2', 'filech3_3', 'filech3_4', 'filech3_5'
     ];
 
-    // IndexedDB initialization & helper functions
     function openIDB() {
       return new Promise((resolve) => {
         const req = indexedDB.open('/idbfs', 1);
@@ -233,7 +240,7 @@
           tx.oncomplete = () => { db.close(); resolve(); };
           tx.onerror = () => { db.close(); resolve(); };
         } catch(err) {
-          db.close();
+          if (db) db.close();
           resolve();
         }
       });
@@ -272,13 +279,37 @@
           };
           req.onerror = () => { db.close(); resolve(results); };
         } catch(err) {
-          db.close();
+          if (db) db.close();
           resolve(results);
         }
       });
     }
 
-    // Universal Export Function
+    function getActiveFS() {
+      const frame = document.getElementById('game-frame');
+      if (frame && frame.contentWindow) {
+        if (frame.contentWindow.FS) return frame.contentWindow.FS;
+        if (frame.contentWindow.Module && frame.contentWindow.Module.FS) return frame.contentWindow.Module.FS;
+      }
+      if (typeof FS !== 'undefined') return FS;
+      if (window.Module && window.Module.FS) return window.Module.FS;
+      return null;
+    }
+
+    // Diagnostic tool to view exact key names currently saved in browser
+    function debugStorageKeys() {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        keys.push(localStorage.key(i));
+      }
+      if (keys.length === 0) {
+        alert("LocalStorage is completely empty right now.\n\nMake sure to interact with a Save Star in Chapter 1/2 first!");
+      } else {
+        alert("Current LocalStorage Keys:\n\n" + keys.join("\n"));
+      }
+    }
+
+    // Universal Export
     async function exportAllSaves() {
       if (typeof JSZip === 'undefined') {
         alert("Zip library is loading. Please wait 3 seconds and try again.");
@@ -288,8 +319,8 @@
       const zip = new JSZip();
       let foundCount = 0;
 
-      // 1. Check Active Emscripten Virtual File System
-      const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
+      // 1. Read from Active Emscripten FS inside chapter iframe
+      const activeFS = getActiveFS();
       if (activeFS) {
         DELTARUNE_FILES.forEach(filename => {
           try {
@@ -302,7 +333,7 @@
         });
       }
 
-      // 2. Check IndexedDB (/idbfs)
+      // 2. Read from IndexedDB (/idbfs)
       const idbFiles = await readFromIndexedDB();
       for (const [name, content] of Object.entries(idbFiles)) {
         if (!zip.file(name) && content && content.length > 0) {
@@ -311,7 +342,7 @@
         }
       }
 
-      // 3. Check LocalStorage
+      // 3. Read from LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         const value = localStorage.getItem(key);
@@ -324,7 +355,7 @@
       }
 
       if (foundCount === 0) {
-        alert("No save files found! Make sure you save in-game at a yellow Save Point star first.");
+        alert("No save files found! Make sure to save in-game at a yellow Save Point first.");
         return;
       }
 
@@ -337,7 +368,7 @@
       document.body.removeChild(link);
     }
 
-    // Universal Import Function
+    // Universal Import
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
@@ -361,16 +392,17 @@
 
           const content = await zipEntry.async('string');
 
-          // 1. Save to LocalStorage across all GameMaker web key formats
+          // 1. Populate all potential GameMaker LocalStorage key formats
           localStorage.setItem(fileName, content);
           localStorage.setItem('/' + fileName, content);
           localStorage.setItem('GMS2_' + fileName, content);
+          localStorage.setItem('GMS2_file_' + fileName, content);
 
-          // 2. Save directly to IndexedDB (/idbfs)
+          // 2. Write directly to IndexedDB (/idbfs)
           await writeToIndexedDB(fileName, content);
 
-          // 3. Write to active Emscripten FS if game engine is loaded
-          const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
+          // 3. Write directly to active Game Frame FS if game is running
+          const activeFS = getActiveFS();
           if (activeFS) {
             try {
               activeFS.writeFile('/' + fileName, content);
@@ -383,20 +415,12 @@
         }
 
         if (importedCount === 0) {
-          alert("No valid save files were found inside this ZIP file.");
+          alert("No valid save files were found inside this ZIP archive.");
           return;
         }
 
-        const activeFS = typeof FS !== 'undefined' ? FS : (window.Module && window.Module.FS ? window.Module.FS : null);
-        if (activeFS && activeFS.syncfs) {
-          activeFS.syncfs(false, function() {
-            alert(`Imported ${importedCount} file(s): (${importedNames.join(', ')})!\nReloading page now...`);
-            location.reload();
-          });
-        } else {
-          alert(`Imported ${importedCount} file(s): (${importedNames.join(', ')})!\nReloading page now...`);
-          location.reload();
-        }
+        alert(`Successfully imported ${importedCount} file(s): (${importedNames.join(', ')})!\n\nReloading page now...`);
+        location.reload();
       } catch (err) {
         alert("Error parsing ZIP file: " + err.message);
       }
