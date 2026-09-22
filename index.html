@@ -68,12 +68,11 @@
   </div>
 
   <script>
-    // Dynamically load JSZip from host domain to bypass <base> tag redirect
+    // Dynamically load JSZip library from your repository
     (function loadJSZipLibrary() {
       const jszipScript = document.createElement('script');
       jszipScript.src = new URL('jszip.min.js', window.location.href).href;
       jszipScript.onerror = function() {
-        // Fallback to JSDelivr under your repo if local fails
         const fallback = document.createElement('script');
         fallback.src = 'https://cdn.jsdelivr.net/gh/FunkinOnAFridayNight/deltarune@main/jszip.min.js';
         document.head.appendChild(fallback);
@@ -107,7 +106,6 @@
         gamestarted = true;
         document.documentElement.innerHTML = html;
         
-        // Keep save buttons visible overlaying the active game
         if (saveUI) {
           document.body.appendChild(saveUI);
         }
@@ -183,7 +181,6 @@
       }
     });
 
-    // Standard Deltarune save file names
     const DELTARUNE_FILES = [
       'dr.ini',
       'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5',
@@ -192,17 +189,53 @@
       'filech4_0', 'filech4_1', 'filech4_2', 'filech4_3', 'filech4_4', 'filech4_5'
     ];
 
-    // Export: Pulls from Emscripten Virtual FS and all local storage keys
+    // Writes files into Emscripten IndexedDB store (/idbfs)
+    function writeToIndexedDB(fileName, textContent) {
+      return new Promise((resolve) => {
+        const request = indexedDB.open('/idbfs');
+        request.onsuccess = function(e) {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('FILE_DATA')) {
+            db.close();
+            return resolve();
+          }
+          const tx = db.transaction(['FILE_DATA'], 'readwrite');
+          const store = tx.objectStore('FILE_DATA');
+          const encoder = new TextEncoder();
+          const uint8Data = encoder.encode(textContent);
+
+          const pathVariations = [
+            '/' + fileName,
+            fileName,
+            '/home/web_user/gamedata/' + fileName
+          ];
+
+          pathVariations.forEach(pathKey => {
+            store.put({
+              timestamp: new Date(),
+              mode: 33206,
+              contents: uint8Data
+            }, pathKey);
+          });
+
+          tx.oncomplete = function() { db.close(); resolve(); };
+          tx.onerror = function() { db.close(); resolve(); };
+        };
+        request.onerror = function() { resolve(); };
+      });
+    }
+
+    // Export function
     async function exportAllSaves() {
       if (typeof JSZip === 'undefined') {
-        alert("Zip library is still loading. Please wait 3 seconds and try again.");
+        alert("Zip library is loading. Please wait 3 seconds and try again.");
         return;
       }
 
       const zip = new JSZip();
       let foundCount = 0;
 
-      // 1. Export from active Emscripten Virtual File System if inside game
+      // 1. Check Emscripten FS
       if (typeof FS !== 'undefined') {
         DELTARUNE_FILES.forEach(filename => {
           try {
@@ -215,13 +248,14 @@
         });
       }
 
-      // 2. Export everything currently in LocalStorage
+      // 2. Check LocalStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         const value = localStorage.getItem(key);
+        const cleanName = key.split('/').pop();
         
-        if (value && value.length > 0 && !zip.file(key)) {
-          zip.file(key, value);
+        if (value && value.length > 0 && !zip.file(cleanName)) {
+          zip.file(cleanName, value);
           foundCount++;
         }
       }
@@ -231,7 +265,6 @@
         return;
       }
 
-      // Create ZIP download
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(zipBlob);
@@ -241,13 +274,13 @@
       document.body.removeChild(link);
     }
 
-    // Import: Restores ZIP files to LocalStorage and Emscripten FS
+    // Import function with direct IndexedDB sync
     async function importAllSaves(fileInput) {
       const file = fileInput.files[0];
       if (!file) return;
 
       if (typeof JSZip === 'undefined') {
-        alert("Zip library is still loading. Please wait 3 seconds and try again.");
+        alert("Zip library is loading. Please wait 3 seconds and try again.");
         return;
       }
 
@@ -259,16 +292,20 @@
           const zipEntry = zip.files[relativePath];
           if (zipEntry.dir) continue;
 
-          // Strip folder paths
           const fileName = relativePath.split('/').pop();
           if (!fileName) continue;
 
           const content = await zipEntry.async('string');
 
-          // Save to LocalStorage
+          // 1. Save to LocalStorage under multiple path prefixes
           localStorage.setItem(fileName, content);
+          localStorage.setItem('/' + fileName, content);
+          localStorage.setItem('DELTARUNE/' + fileName, content);
 
-          // Save to Emscripten FS if active
+          // 2. Save directly to IndexedDB (/idbfs)
+          await writeToIndexedDB(fileName, content);
+
+          // 3. Save to Emscripten active FS if game is currently loaded
           if (typeof FS !== 'undefined') {
             try {
               FS.writeFile('/' + fileName, content);
@@ -283,7 +320,7 @@
         }
 
         if (typeof FS !== 'undefined' && FS.syncfs) {
-          FS.syncfs(false, function(err) {
+          FS.syncfs(false, function() {
             alert(`Successfully imported ${importedCount} file(s)! Reloading page...`);
             location.reload();
           });
