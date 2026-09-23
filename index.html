@@ -1,422 +1,161 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DELTARUNE</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deltarune Web Port (Chapters 1-4)</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Save Manager Overlay Panel styles */
+        .save-manager-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(17, 17, 17, 0.95);
+            color: #ffffff;
+            font-family: 'Courier New', Courier, monospace;
+            border: 2px solid #ffffff;
+            padding: 15px;
+            border-radius: 4px;
+            z-index: 9999;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 320px;
+        }
+        .save-manager-panel h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #ffd700;
+            text-transform: uppercase;
+            border-bottom: 1px dashed #fff;
+            padding-bottom: 5px;
+        }
+        .save-group {
+            margin-bottom: 12px;
+        }
+        .save-group label {
+            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+            color: #bbb;
+        }
+        .save-btn {
+            background: #222;
+            color: #ffd700;
+            border: 1px solid #ffd700;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 11px;
+            margin-right: 5px;
+            margin-top: 3px;
+            transition: all 0.2s ease;
+        }
+        .save-btn:hover {
+            background: #ffd700;
+            color: #000;
+        }
+        .file-input-wrapper {
+            margin-top: 5px;
+        }
+        .file-input-wrapper input[type="file"] {
+            font-size: 11px;
+            color: #fff;
+            max-width: 100%;
+        }
+    </style>
 </head>
 <body>
-  <div class="logo-container">
-    <img src="logo.png" alt="Logo" class="logo">
-  </div>
-  
-  <div class="menu">
-    <a href="javascript:loadChapter(1)" class="row">
-      <span class="chapter">Chapter 1</span>
-      <span class="title">The Beginning</span>
-      <img src="icons/1.png" alt="1">
-    </a>
-    <a href="javascript:loadChapter(2)" class="row">
-      <span class="chapter">Chapter 2</span>
-      <span class="title">A Cyber's World</span>
-      <img src="icons/2.png" alt="2">
-    </a>
-    <a href="javascript:loadChapter(3)" class="row">
-      <span class="chapter">Chapter 3</span>
-      <span class="title">Late Night</span>
-      <img src="icons/3.png" alt="3">
-    </a>
-    <a href="javascript:alert('Chapter 4 disabled to stay under GitHub 1GB limit!')" class="disabled-row">
-      <span class="chapter">Chapter 4</span>
-      <span class="disabled-title">--</span>
-      <img src="icons/0.png" alt="0">
-    </a>
-    <a href="javascript:alert('Chapter 5 coming soon!')" class="disabled-row">
-      <span class="chapter">Chapter 5</span>
-      <span class="disabled-title">--</span>
-      <img src="icons/0.png" alt="0">
-    </a>
-    <a href="javascript:alert('Chapter 6 coming soon!')" class="disabled-row">
-      <span class="chapter">Chapter 6</span>
-      <span class="disabled-title">--</span>
-      <img src="icons/0.png" alt="0">
-    </a>
-    <a href="javascript:alert('Chapter 7 coming soon!')" class="disabled-row">
-      <span class="chapter">Chapter 7</span>
-      <span class="disabled-title">--</span>
-      <img src="icons/0.png" alt="0">
-    </a>
-    <a href="javascript:window.open('https://truffled.lol', '_blank')" class="row">
-      <span class="chapter"></span>
-      <span class="title">port by bog :o</span>
-      <span class="badge"></span>
-    </a>
-  </div>
 
-  <audio id="drone" controls loop autoplay hidden>
-    <source src="audios/AUDIO_DRONE.ogg" type="audio/ogg">
-  </audio>
-  <button id="mute">🔊</button>
+    <!-- Main Web Port Frame Navigation (technonyte00 base structure) -->
+    <div id="game-container">
+        <h1>DELTARUNE Web Port</h1>
+        <p>Select a chapter to begin playing:</p>
+        <div class="chapter-select">
+            <a href="chapter1/index.html" class="chapter-link">Chapter 1</a>
+            <a href="chapter2/index.html" class="chapter-link">Chapter 2</a>
+            <a href="chapter3/index.html" class="chapter-link">Chapter 3</a>
+            <a href="chapter4/index.html" class="chapter-link">Chapter 4</a>
+        </div>
+    </div>
 
-  <!-- Save Backup & Restore Overlay -->
-  <div id="save-manager-ui" style="position: fixed; bottom: 10px; right: 10px; z-index: 999999; background: rgba(0,0,0,0.9); padding: 12px; border-radius: 8px; font-family: sans-serif; color: white; border: 1px solid #555; min-width: 170px;">
-    <div style="font-size: 10px; color: #aaa; font-weight: bold; margin-bottom: 6px; text-align: right; letter-spacing: 0.5px;">SAVE MANAGER v1.5</div>
-    <button onclick="exportAllSaves()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #22c55e; color: white; border: none;">📦 Export Zip Save</button>
-    <br>
-    <input type="file" id="importAllInput" accept=".zip" style="display:none" onchange="importAllSaves(this)">
-    <button onclick="document.getElementById('importAllInput').click()" style="margin-bottom: 6px; width: 100%; padding: 8px; cursor: pointer; border-radius: 4px; font-weight: bold; background: #3b82f6; color: white; border: none;">📥 Import Zip Save</button>
-    <br>
-    <button onclick="debugStorageKeys()" style="width: 100%; padding: 4px; cursor: pointer; border-radius: 4px; font-size: 11px; background: #444; color: #ccc; border: none;">🔍 Check Storage Keys</button>
-  </div>
-
-  <script>
-    // JSZip Loader
-    (function loadJSZipLibrary() {
-      const jszipScript = document.createElement('script');
-      jszipScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-      jszipScript.onerror = function() {
-        const fallback = document.createElement('script');
-        fallback.src = 'jszip.min.js';
-        document.head.appendChild(fallback);
-      };
-      document.head.appendChild(jszipScript);
-    })();
-
-    const audio = document.getElementById('drone');
-    const mute = document.getElementById('mute');
-    let gamestarted = false;
-  
-    mute.addEventListener('click', () => {
-      if (!gamestarted) {
-        audio.muted = !audio.muted;
-        updateButton(); 
-      }
-    });
-  
-    function updateButton() {
-      if (!gamestarted) {
-        mute.textContent = audio.muted ? '🔊' : '🔇';
-      }
-    }
-    updateButton();
-
-    // Chapter Loader using direct relative paths
-    function loadChapter(chapter) {
-      gamestarted = true;
-      if (audio) audio.pause();
-
-      let frame = document.getElementById('game-frame');
-      if (!frame) {
-        frame = document.createElement('iframe');
-        frame.id = 'game-frame';
-        frame.style.position = 'fixed';
-        frame.style.top = '0';
-        frame.style.left = '0';
-        frame.style.width = '100vw';
-        frame.style.height = '100vh';
-        frame.style.border = 'none';
-        frame.style.zIndex = '100000';
-        document.body.appendChild(frame);
-      }
-      
-      // Strict relative path matching folder structure on repository
-      frame.src = `./chapter${chapter}/index.html`;
-
-      const saveUI = document.getElementById('save-manager-ui');
-      if (saveUI) {
-        document.body.appendChild(saveUI);
-      }
-    }
-
-    const menumoveaudio = new Audio('audios/snd_menumove.mp3');
-    const menuselectaudio = new Audio('audios/snd_select.mp3');
-    
-    document.querySelectorAll('.row').forEach(row => {
-      row.addEventListener('mouseenter', () => {
-        if (!gamestarted) {
-          menumoveaudio.play();
-          if (selectedChapter !== null && document.querySelectorAll('.row')[selectedChapter]) {
-            document.querySelectorAll('.row')[selectedChapter].classList.remove("selected");
-          }
-        }
-      });
-      row.addEventListener('click', () => {
-        if (!gamestarted) {
-          menuselectaudio.play();
-        }
-      });
-    });
-
-    let selectedChapter = null;
-    document.addEventListener('keydown', function(event) {
-      if (!gamestarted) {
-        const rows = document.querySelectorAll('.row');
-        if (event.key === 'ArrowUp') {
-          if (selectedChapter === null) {
-            selectedChapter = 0;
-            rows[0].classList.add("selected");
-            menumoveaudio.play();
-          } else {
-            rows[selectedChapter].classList.remove("selected");
-            selectedChapter--;
-            if (selectedChapter < 0) {
-              selectedChapter = rows.length - 1;
-            }
-            rows[selectedChapter].classList.add("selected");
-            menumoveaudio.play();
-          }
-        } else if (event.key === 'ArrowDown') {
-          if (selectedChapter === null) {
-            selectedChapter = 0;
-            rows[0].classList.add("selected");
-            menumoveaudio.play();
-          } else {
-            rows[selectedChapter].classList.remove("selected");
-            selectedChapter++;
-            if (selectedChapter >= rows.length) {
-              selectedChapter = 0;
-            }
-            rows[selectedChapter].classList.add("selected");
-            menumoveaudio.play();
-          }
-        } else if (event.key === 'Enter') {
-          if (selectedChapter !== null && rows[selectedChapter]) {
-            rows[selectedChapter].click();
-          } 
-        }
-      }
-    });
-
-    const DELTARUNE_FILES = [
-      'dr.ini', 'config_0.ini', 'keyconfig_0.ini', 'vacationmemories.png',
-      'filech1_0', 'filech1_1', 'filech1_2', 'filech1_3', 'filech1_4', 'filech1_5', 'filech1_9',
-      'filech2_0', 'filech2_1', 'filech2_2', 'filech2_3', 'filech2_4', 'filech2_5', 'filech2_9',
-      'filech3_0', 'filech3_1', 'filech3_2', 'filech3_3', 'filech3_4', 'filech3_5', 'filech3_9'
-    ];
-
-    function openIDB() {
-      return new Promise((resolve) => {
-        const req = indexedDB.open('/idbfs', 1);
-        req.onupgradeneeded = (e) => {
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('FILE_DATA')) {
-            db.createObjectStore('FILE_DATA');
-          }
-        };
-        req.onsuccess = (e) => resolve(e.target.result);
-        req.onerror = () => resolve(null);
-      });
-    }
-
-    async function writeToIndexedDB(fileName, textContent) {
-      const db = await openIDB();
-      if (!db) return;
-
-      return new Promise((resolve) => {
-        try {
-          const tx = db.transaction(['FILE_DATA'], 'readwrite');
-          const store = tx.objectStore('FILE_DATA');
-          const encoder = new TextEncoder();
-          const uint8Data = encoder.encode(textContent);
-
-          const pathKeys = [
-            '/' + fileName,
-            fileName,
-            'GMS2_' + fileName,
-            '/home/web_user/gamedata/' + fileName,
-            '/working/' + fileName
-          ];
-
-          pathKeys.forEach(p => {
-            store.put({
-              timestamp: new Date(),
-              mode: 33206,
-              contents: uint8Data
-            }, p);
-          });
-
-          tx.oncomplete = () => { db.close(); resolve(); };
-          tx.onerror = () => { db.close(); resolve(); };
-        } catch(err) {
-          if (db) db.close();
-          resolve();
-        }
-      });
-    }
-
-    async function readFromIndexedDB() {
-      const db = await openIDB();
-      if (!db) return {};
-
-      return new Promise((resolve) => {
-        const results = {};
-        try {
-          const tx = db.transaction(['FILE_DATA'], 'readonly');
-          const store = tx.objectStore('FILE_DATA');
-          const req = store.openCursor();
-
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor) {
-              const pathKey = cursor.key;
-              const val = cursor.value;
-              const cleanName = String(pathKey).replace(/^(GMS2_|\/)/, '').split('/').pop();
-
-              if (val && val.contents) {
-                const decoder = new TextDecoder();
-                const str = decoder.decode(val.contents);
-                if (str && str.length > 0) {
-                  results[cleanName] = str;
-                }
-              }
-              cursor.continue();
-            } else {
-              db.close();
-              resolve(results);
-            }
-          };
-          req.onerror = () => { db.close(); resolve(results); };
-        } catch(err) {
-          if (db) db.close();
-          resolve(results);
-        }
-      });
-    }
-
-    function getActiveFS() {
-      const frame = document.getElementById('game-frame');
-      if (frame && frame.contentWindow) {
-        if (frame.contentWindow.FS) return frame.contentWindow.FS;
-        if (frame.contentWindow.Module && frame.contentWindow.Module.FS) return frame.contentWindow.Module.FS;
-      }
-      if (typeof FS !== 'undefined') return FS;
-      if (window.Module && window.Module.FS) return window.Module.FS;
-      return null;
-    }
-
-    function debugStorageKeys() {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        keys.push(localStorage.key(i));
-      }
-      if (keys.length === 0) {
-        alert("LocalStorage is empty.");
-      } else {
-        alert("Current LocalStorage Keys:\n\n" + keys.join("\n"));
-      }
-    }
-
-    async function exportAllSaves() {
-      if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait 3 seconds and try again.");
-        return;
-      }
-
-      const zip = new JSZip();
-      let foundCount = 0;
-
-      const activeFS = getActiveFS();
-      if (activeFS) {
-        DELTARUNE_FILES.forEach(filename => {
-          try {
-            const content = activeFS.readFile('/' + filename, { encoding: 'utf8' });
-            if (content && content.length > 0) {
-              zip.file(filename, content);
-              foundCount++;
-            }
-          } catch (err) {}
-        });
-      }
-
-      const idbFiles = await readFromIndexedDB();
-      for (const [name, content] of Object.entries(idbFiles)) {
-        if (!zip.file(name) && content && content.length > 0) {
-          zip.file(name, content);
-          foundCount++;
-        }
-      }
-
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        const value = localStorage.getItem(key);
-        const cleanName = key.replace(/^(GMS2_|\/)/, '').split('/').pop();
+    <!-- INJECTED SAVE MANAGER PANEL -->
+    <div class="save-manager-panel">
+        <h3>Save File Utility</h3>
         
-        if (value && value.length > 0 && !zip.file(cleanName)) {
-          zip.file(cleanName, value);
-          foundCount++;
-        }
-      }
+        <!-- EXPORT UTILITY -->
+        <div class="save-group">
+            <label>Export Save State to PC:</label>
+            <button class="save-btn" onclick="exportWebSave('filech3_0')">Ch 3 (Slot 1)</button>
+            <button class="save-btn" onclick="exportWebSave('filech4_0')">Ch 4 (Slot 1)</button>
+        </div>
+        
+        <!-- IMPORT UTILITY -->
+        <div class="save-group">
+            <label>Import Native Save File:</label>
+            <div class="file-input-wrapper">
+                <input type="file" id="deltaruneSaveLoader" accept="*/*"><br>
+                <button class="save-btn" style="width: 100%; margin-top: 8px;" onclick="importNativeSave()">Load Into Browser</button>
+            </div>
+        </div>
+    </div>
 
-      if (foundCount === 0) {
-        alert("No save files found! Save in-game at a yellow Save Point first.");
-        return;
-      }
-
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = 'deltarune_saves.zip';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    async function importAllSaves(fileInput) {
-      const file = fileInput.files[0];
-      if (!file) return;
-
-      if (typeof JSZip === 'undefined') {
-        alert("Zip library is loading. Please wait 3 seconds and try again.");
-        return;
-      }
-
-      try {
-        const zip = await JSZip.loadAsync(file);
-        let importedCount = 0;
-        let importedNames = [];
-
-        for (const relativePath of Object.keys(zip.files)) {
-          const zipEntry = zip.files[relativePath];
-          if (zipEntry.dir) continue;
-
-          const rawName = relativePath.split('/').pop();
-          if (!rawName) continue;
-
-          const fileName = rawName.replace(/^(GMS2_|\/)/, '');
-          const content = await zipEntry.async('string');
-
-          localStorage.setItem(fileName, content);
-          localStorage.setItem('/' + fileName, content);
-          localStorage.setItem('GMS2_' + fileName, content);
-          localStorage.setItem('GMS2_/' + fileName, content);
-
-          await writeToIndexedDB(fileName, content);
-
-          const activeFS = getActiveFS();
-          if (activeFS) {
-            try {
-              activeFS.writeFile('/' + fileName, content);
-              activeFS.writeFile(fileName, content);
-              activeFS.writeFile('GMS2_' + fileName, content);
-            } catch (err) {}
-          }
-
-          importedCount++;
-          importedNames.push(fileName);
+    <script>
+        /**
+         * Pulls local data out of the standard GameMaker HTML5 localStorage pipeline 
+         * and triggers a local file download naming layout compatible with %LocalAppData%/DELTARUNE
+         */
+        function exportWebSave(saveFileName) {
+            // technonyte00's port uses a truffled canvas engine wrapper. 
+            // Standard web engine keys are mapped as direct file items or prefixed via local variables.
+            const targetKey = saveFileName; 
+            const rawSaveData = localStorage.getItem(targetKey);
+            
+            if (!rawSaveData) {
+                alert("No active browser save found for " + saveFileName + ".\nMake sure you've saved in-game first!");
+                return;
+            }
+            
+            const fileBlob = new Blob([rawSaveData], { type: "text/plain" });
+            const temporaryAnchor = document.createElement("a");
+            temporaryAnchor.href = URL.createObjectURL(fileBlob);
+            temporaryAnchor.download = saveFileName; // Explicitly outputs as "filech3_0" or "filech4_0"
+            temporaryAnchor.click();
+            URL.revokeObjectURL(temporaryAnchor.href);
         }
 
-        if (importedCount === 0) {
-          alert("No valid save files were found inside this ZIP file.");
-          return;
+        /**
+         * Reads a local filechX_X save object uploaded from your PC computer 
+         * and mirrors it straight into the web client's active storage engine
+         */
+        function importNativeSave() {
+            const inputElement = document.getElementById('deltaruneSaveLoader');
+            if (inputElement.files.length === 0) {
+                alert("Please select a standard Deltarune file (e.g., filech3_0) to upload.");
+                return;
+            }
+            
+            const targetedFile = inputElement.files[0];
+            const parsedName = targetedFile.name; // Stores string layout reference matching file entry
+            
+            // Safety confirmation to make sure user isn't overriding key directories by mistake
+            if (!parsedName.startsWith("filech")) {
+                if (!confirm("This file doesn't match standard naming formats (filechX_X). Upload anyway?")) {
+                    return;
+                }
+            }
+            
+            const fileReader = new FileReader();
+            fileReader.onload = function(event) {
+                const embeddedString = event.target.result;
+                
+                // Write data back to local sandbox storage state 
+                localStorage.setItem(parsedName, embeddedString);
+                
+                alert("Successfully loaded " + parsedName + " into your browser storage!\nLaunch or refresh your target chapter to load your progress.");
+            };
+            
+            fileReader.readAsText(targetedFile);
         }
-
-        alert(`Successfully imported ${importedCount} file(s)!\n\nReloading page now...`);
-        location.reload();
-      } catch (err) {
-        alert("Error parsing ZIP file: " + err.message);
-      }
-    }
-  </script>
+    </script>
 </body>
 </html>
